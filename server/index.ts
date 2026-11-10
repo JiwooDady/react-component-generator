@@ -104,7 +104,7 @@ async function callGoogleModel(prompt: string, apiKey: string, model: string): P
     body: JSON.stringify({
       system_instruction: { parts: [{ text: SYSTEM_PROMPT }] },
       contents: [{ role: 'user', parts: [{ text: prompt }] }],
-      generationConfig: { maxOutputTokens: 8192 },
+      generationConfig: { maxOutputTokens: 16384 },
     }),
   });
 
