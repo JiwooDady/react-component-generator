@@ -33,7 +33,7 @@ React 19 SPA. 프롬프트 입력, 프로바이더/키 설정, 생성 결과 카
 
 ### Security Boundary
 
-- 사용자가 입력한 API 키는 React 상태에만 보관하고 요청 body로만 보낸다 (`App.tsx:14`, `useComponentGenerator.ts:26`). `localStorage`/`sessionStorage`/쿠키/URL에 저장하지 않는다.
+- 사용자가 입력한 API 키는 `usePersistentState`로 `localStorage`(`apiKey`)에 저장해 새로고침 후에도 유지하며 (`App.tsx`), 요청 body로만 보낸다 (`useComponentGenerator.ts`). `sessionStorage`/쿠키/URL에는 저장하지 않는다. Provider, 프롬프트 히스토리(최대 20개), 생성된 컴포넌트 목록도 같은 훅으로 저장한다.
 - 서버 환경변수 키의 존재 여부는 boolean으로만 받는다 (`App.tsx:17-20`, `App.tsx:27`). 키 값을 요구하는 UI를 만들지 않는다.
 
 ### Asymmetry
