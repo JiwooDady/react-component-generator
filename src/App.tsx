@@ -2,8 +2,11 @@ import { useState, useEffect } from 'react';
 import { PromptInput } from './components/PromptInput';
 import { ComponentCard } from './components/ComponentCard';
 import { useComponentGenerator } from './hooks/useComponentGenerator';
+import { usePersistentState } from './hooks/usePersistentState';
 import type { Provider } from './types';
 import './App.css';
+
+const MAX_HISTORY = 20;
 
 const PROVIDER_CONFIG = {
   anthropic: { label: 'Anthropic', placeholder: 'sk-ant-...' },
@@ -11,9 +14,10 @@ const PROVIDER_CONFIG = {
 } as const;
 
 function App() {
-  const [apiKey, setApiKey] = useState('');
+  const [apiKey, setApiKey] = usePersistentState('apiKey', '');
   const [showKey, setShowKey] = useState(false);
-  const [provider, setProvider] = useState<Provider>('google');
+  const [provider, setProvider] = usePersistentState<Provider>('provider', 'google');
+  const [promptHistory, setPromptHistory] = usePersistentState<string[]>('promptHistory', []);
   const [envKeys, setEnvKeys] = useState<Record<Provider, boolean>>({
     anthropic: false,
     google: false,
@@ -35,6 +39,9 @@ function App() {
       alert(`${PROVIDER_CONFIG[provider].label} API 키를 입력하거나 .env에 설정해주세요.`);
       return;
     }
+    setPromptHistory((prev) =>
+      [prompt, ...prev.filter((p) => p !== prompt)].slice(0, MAX_HISTORY),
+    );
     generate(prompt, apiKey || undefined, provider);
   };
 
@@ -74,7 +81,7 @@ function App() {
         <section className="window composer-panel" aria-label="컴포넌트 생성">
           <div className="window-title"><span>프롬프트</span></div>
           <div className="window-body">
-            <PromptInput onGenerate={handleGenerate} isLoading={isLoading} />
+            <PromptInput onGenerate={handleGenerate} isLoading={isLoading} history={promptHistory} />
           </div>
         </section>
 
