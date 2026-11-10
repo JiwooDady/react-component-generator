@@ -9,6 +9,15 @@ export function stripCodeFences(text: string): string {
     .trim();
 }
 
+/** 스트리밍으로 모은 전체 텍스트를 최종 코드로 만든다. 비어 있으면 에러를 던진다. */
+export function finalizeCode(text: string): string {
+  const code = stripCodeFences(text);
+  if (!code) {
+    throw new Error('생성된 코드가 비어 있습니다. 다시 시도해주세요.');
+  }
+  return ensureRenderCall(code);
+}
+
 /**
  * react-live(noInline)는 `render(...)` 호출이 있어야 미리보기를 그린다.
  * 응답에 render 호출이 없으면 첫 컴포넌트 선언을 찾아 자동으로 주입한다.

@@ -8,12 +8,15 @@ interface ComponentCardProps {
   onRemove: (id: string) => void;
   onRegenerate: (prompt: string) => void;
   isLoading: boolean;
+  isStreaming?: boolean;
 }
 
 type Tab = 'preview' | 'code';
 
-export function ComponentCard({ component, onRemove, onRegenerate, isLoading }: ComponentCardProps) {
-  const [activeTab, setActiveTab] = useState<Tab>('preview');
+export function ComponentCard({ component, onRemove, onRegenerate, isLoading, isStreaming = false }: ComponentCardProps) {
+  const [selectedTab, setActiveTab] = useState<Tab>('preview');
+  // 생성 중에는 코드 탭에 고정한다. 완료되면 새 카드가 미리보기 탭으로 시작한다.
+  const activeTab: Tab = isStreaming ? 'code' : selectedTab;
   const [previewKey, setPreviewKey] = useState(0);
   const createdAt = component.createdAt.toLocaleTimeString('ko-KR', {
     hour: '2-digit',
@@ -46,6 +49,7 @@ export function ComponentCard({ component, onRemove, onRegenerate, isLoading }: 
           <button
             className="btn-remove"
             onClick={() => onRemove(component.id)}
+            disabled={isStreaming}
           >
             삭제
           </button>
@@ -56,6 +60,7 @@ export function ComponentCard({ component, onRemove, onRegenerate, isLoading }: 
           role="tab"
           aria-selected={activeTab === 'preview'}
           className={`tab ${activeTab === 'preview' ? 'tab--active' : ''}`}
+          disabled={isStreaming}
           onClick={() => setActiveTab('preview')}
         >
           미리보기

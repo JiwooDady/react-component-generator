@@ -1,5 +1,17 @@
 import { describe, it, expect } from 'vitest';
-import { stripCodeFences, ensureRenderCall } from './generator';
+import { stripCodeFences, ensureRenderCall, finalizeCode } from './generator';
+
+describe('finalizeCode', () => {
+  it('코드펜스를 제거하고 render 호출을 보정한다', () => {
+    expect(finalizeCode('```jsx\nconst Box = () => null;\n```')).toBe(
+      'const Box = () => null;\n\nrender(<Box />);',
+    );
+  });
+
+  it('응답이 비어 있으면 에러를 던진다', () => {
+    expect(() => finalizeCode('  \n ')).toThrow('생성된 코드가 비어 있습니다.');
+  });
+});
 
 describe('stripCodeFences', () => {
   it('언어 태그가 붙은 코드펜스를 제거한다', () => {

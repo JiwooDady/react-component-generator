@@ -18,6 +18,7 @@
 
 - API 키를 응답·로그·코드에 노출하지 않는다. `/api/config`는 키 존재 여부(boolean)만 반환한다 (`server/index.ts:147-155`). `ENV_KEYS` 값 자체를 클라이언트로 내보내는 변경 금지.
 - AI가 생성한 코드는 `react-live`로만 실행한다 (`src/components/LivePreview.tsx:14`). `eval`, `new Function`, `dangerouslySetInnerHTML` 등 다른 실행 경로를 추가하지 않는다.
+- 민감 파일(`.env`, `.env.*`, `*credential*`, `*secret*`, `*.pem`, `*.key`, `id_rsa*`, `.npmrc`, `.aws/`, `.ssh/`)은 읽기·수정·출력 모두 금지한다. `.claude/settings.json`의 `permissions.deny`로 차단되어 있으며, `cat`·`grep` 등 셸 명령이나 다른 우회 경로로도 접근하지 않는다. 환경변수가 필요하면 키 이름만 다루고 값은 사용자에게 직접 설정하도록 안내한다. `permissions.deny` 항목을 임의로 제거·완화하지 않는다.
 
 ### Hard Constraints (서버-클라이언트 경계)
 
