@@ -59,22 +59,27 @@ export function useComponentGenerator(): UseComponentGeneratorReturn {
       let buffer = '';
       let finalCode: string | null = null;
 
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
+      try {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
 
-        const parsed = parseNdjson(buffer + decoder.decode(value, { stream: true }));
-        buffer = parsed.rest;
+          const parsed = parseNdjson(buffer + decoder.decode(value, { stream: true }));
+          buffer = parsed.rest;
 
-        for (const event of parsed.events as StreamEvent[]) {
-          if (event.type === 'delta') {
-            setStreaming((prev) => prev && { ...prev, code: prev.code + event.text });
-          } else if (event.type === 'done') {
-            finalCode = event.code;
-          } else {
-            throw new Error(event.error);
+          for (const event of parsed.events as StreamEvent[]) {
+            if (event.type === 'delta') {
+              setStreaming((prev) => prev && { ...prev, code: prev.code + event.text });
+            } else if (event.type === 'done') {
+              finalCode = event.code;
+            } else {
+              throw new Error(event.error);
+            }
           }
         }
+      } finally {
+        // 에러로 중단돼도 서버 연결을 끊어 업스트림 호출이 계속되지 않게 한다.
+        reader.cancel().catch(() => {});
       }
 
       if (finalCode === null) {

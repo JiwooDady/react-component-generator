@@ -1,6 +1,6 @@
-import { stripCodeFences, ensureRenderCall } from './generator';
+import { stripCodeFences, ensureRenderCall, finalizeCode } from './generator';
 import { withModelFallback } from './fallback';
-import { parseSseData, extractAnthropicDelta, extractGoogleDelta } from './stream';
+import { readSseData, extractAnthropicDelta, extractGoogleDelta } from './stream';
 
 // 우선순위 순서. 앞 모델이 실패하면 다음 모델로 폴백한다.
 const GOOGLE_MODELS = ['gemini-3.1-flash-lite', 'gemini-3.5-flash'];
@@ -136,27 +136,17 @@ async function callGoogle(prompt: string, apiKey: string): Promise<string> {
   return withModelFallback(GOOGLE_MODELS, (model) => callGoogleModel(prompt, apiKey, model));
 }
 
-// SSE 응답 본문에서 data 값을 순서대로 꺼낸다.
-async function* readSseData(response: Response): AsyncGenerator<string> {
-  const reader = response.body!.getReader();
-  const decoder = new TextDecoder();
-  let buffer = '';
-
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    buffer += decoder.decode(value, { stream: true });
-    const parsed = parseSseData(buffer);
-    buffer = parsed.rest;
-    yield* parsed.data;
-  }
-}
-
 // 스트리밍 호출은 응답 헤더를 받은 시점(첫 청크 전)까지만 에러를 던진다.
 // 상태 코드 에러 메시지 형식은 비스트리밍 호출과 같아야 503/429 매핑이 동작한다.
-async function* streamAnthropic(prompt: string, apiKey: string): AsyncGenerator<string> {
+// signal이 abort되면 업스트림 요청도 함께 취소된다 (클라이언트 연결 종료 시 비용 낭비 방지).
+async function* streamAnthropic(
+  prompt: string,
+  apiKey: string,
+  signal: AbortSignal,
+): AsyncGenerator<string> {
   const response = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
+    signal,
     headers: {
       'Content-Type': 'application/json',
       'x-api-key': apiKey,
@@ -175,17 +165,23 @@ async function* streamAnthropic(prompt: string, apiKey: string): AsyncGenerator<
     throw new Error(`Claude API error: ${response.status}`);
   }
 
-  for await (const data of readSseData(response)) {
+  for await (const data of readSseData(response.body!)) {
     const text = extractAnthropicDelta(data);
     if (text) yield text;
   }
 }
 
-async function openGoogleStream(prompt: string, apiKey: string, model: string): Promise<Response> {
+async function openGoogleStream(
+  prompt: string,
+  apiKey: string,
+  model: string,
+  signal: AbortSignal,
+): Promise<Response> {
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:streamGenerateContent?alt=sse&key=${apiKey}`;
 
   const response = await fetch(url, {
     method: 'POST',
+    signal,
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       system_instruction: { parts: [{ text: SYSTEM_PROMPT }] },
@@ -201,12 +197,16 @@ async function openGoogleStream(prompt: string, apiKey: string, model: string): 
 }
 
 // 모델 폴백은 스트림을 열기 전(첫 청크 전)까지만 가능하다.
-async function* streamGoogle(prompt: string, apiKey: string): AsyncGenerator<string> {
+async function* streamGoogle(
+  prompt: string,
+  apiKey: string,
+  signal: AbortSignal,
+): AsyncGenerator<string> {
   const response = await withModelFallback(GOOGLE_MODELS, (model) =>
-    openGoogleStream(prompt, apiKey, model),
+    openGoogleStream(prompt, apiKey, model, signal),
   );
 
-  for await (const data of readSseData(response)) {
+  for await (const data of readSseData(response.body!)) {
     const { text, truncated } = extractGoogleDelta(data);
     if (text) yield text;
     if (truncated) {
@@ -236,12 +236,16 @@ function toErrorResponse(err: unknown): Response {
 }
 
 // 델타를 줄 단위 JSON(NDJSON)으로 흘려보내고, 마지막에 후처리된 최종 코드를 보낸다.
-function toNdjsonResponse(source: AsyncGenerator<string>): Response {
+// 클라이언트가 연결을 끊으면(cancel) 업스트림 요청을 abort하고, 닫힌 스트림에는 더 쓰지 않는다.
+function toNdjsonResponse(source: AsyncGenerator<string>, abort: AbortController): Response {
   const encoder = new TextEncoder();
+  let closed = false;
+
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {
-      const send = (event: unknown) =>
-        controller.enqueue(encoder.encode(`${JSON.stringify(event)}\n`));
+      const send = (event: unknown) => {
+        if (!closed) controller.enqueue(encoder.encode(`${JSON.stringify(event)}\n`));
+      };
 
       try {
         let text = '';
@@ -249,12 +253,19 @@ function toNdjsonResponse(source: AsyncGenerator<string>): Response {
           text += delta;
           send({ type: 'delta', text: delta });
         }
-        send({ type: 'done', code: ensureRenderCall(stripCodeFences(text)) });
+        send({ type: 'done', code: finalizeCode(text) });
       } catch (err) {
         send({ type: 'error', error: err instanceof Error ? err.message : 'Unknown error' });
       } finally {
-        controller.close();
+        if (!closed) {
+          closed = true;
+          controller.close();
+        }
       }
+    },
+    cancel() {
+      closed = true;
+      abort.abort();
     },
   });
 
@@ -308,10 +319,14 @@ const server = Bun.serve({
           );
         }
 
+        // 요청이 끊기면 업스트림 호출도 취소한다.
+        const abort = new AbortController();
+        req.signal.addEventListener('abort', () => abort.abort());
+
         const source =
           provider === 'google'
-            ? streamGoogle(prompt, resolvedKey)
-            : streamAnthropic(prompt, resolvedKey);
+            ? streamGoogle(prompt, resolvedKey, abort.signal)
+            : streamAnthropic(prompt, resolvedKey, abort.signal);
 
         // 첫 청크를 먼저 받아 연결/상태 코드 에러는 일반 JSON 에러 응답으로 돌려준다.
         const first = await source.next();
@@ -320,7 +335,7 @@ const server = Bun.serve({
           yield* source;
         }
 
-        return toNdjsonResponse(withFirst());
+        return toNdjsonResponse(withFirst(), abort);
       } catch (err) {
         return toErrorResponse(err);
       }
