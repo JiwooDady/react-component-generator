@@ -387,6 +387,13 @@
   line-height: 1.6;
 }
 
+.prompt-error {
+  color: var(--danger);
+  font-size: 0.84rem;
+  font-weight: 700;
+  line-height: 1.6;
+}
+
 .results-section {
   min-height: 320px;
 }
