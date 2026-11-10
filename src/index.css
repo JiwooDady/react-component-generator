@@ -1,0 +1,40 @@
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+:root {
+  color-scheme: light;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  --desk: #1f6f6b;
+  --desk-dot: #1a5f5c;
+  --ink: #14213d;
+}
+
+body {
+  font-family: 'Galmuri11', 'Galmuri9', 'Malgun Gothic', ui-monospace, system-ui, sans-serif;
+  background-color: var(--desk);
+  background-image: radial-gradient(var(--desk-dot) 1px, transparent 1.5px);
+  background-size: 4px 4px;
+  color: var(--ink);
+  min-height: 100vh;
+  line-height: 1.5;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+
+button {
+  -webkit-tap-highlight-color: transparent;
+}
+
+::selection {
+  background: var(--ink);
+  color: #f7c948;
+}
